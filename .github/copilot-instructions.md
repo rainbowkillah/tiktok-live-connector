@@ -1,83 +1,222 @@
-# Copilot Instructions
+<--------- This is a multi-agent orchestration prompt for the TikTok LIVE Connector project. The goal is to design and implement a production-ready event platform that can ingest, sort, and digest all events and triggers from TikTok LIVE streams. The platform will provide a web UI for streamers and moderators, act as a middleman to send events to Streamer for further processing, and serve as a central storage for all TikTok stream activities, data, and videos. --------->
 
-## Build Commands
+Multi‑Agent Orchestration Prompt (Unified)
 
-```bash
-npm install          # Node >=20 required
-npm run build        # Updates src/version.ts, copies package.json/LICENSE to dist/, compiles TS, resolves path aliases
-npm pack --dry-run   # Verify publish artifacts
-```
+Project: TikTok LIVE Connector — Production‑Ready Event Platform
 
-There is no `npm test` script. Validate changes with `npm run build` and a manual smoke test of the affected path.
+Mission
 
-**Protobuf regeneration** (only when `.proto/src/*.proto` files change):
-```bash
-npx tsx .proto/build-node-compatible.ts   # Regenerates src/types/tiktok-schema.ts — do not edit by hand
-npx tsx .proto/build-web-compatible.ts    # Regenerates .proto/web_dist/
-```
+Design and build a fully operational TikTok LIVE connector platform that:
 
-## Architecture
+Ingests raw TikTok LIVE events — including chat messages, gifts, likes, follows, shares, joins, subscriptions, emotes, battles and connection lifecycle events (connect, disconnect, error).
 
-`TikTokLiveConnection` (`src/lib/client.ts`) is the main class. It orchestrates:
+Normalizes all events into a stable, versioned internal schema (UnifiedEvent v1) using an Event types that should map to the canonical names CHAT, GIFT, LIKE, FOLLOW, SHARE, JOIN, SUBSCRIBE, EMOTE, BATTLE, CONNECTED, DISCONNECTED and ERROR.
 
-1. **Room ID resolution** — three methods tried in order: HTML scrape → TikTok API → Euler fallback. Set `disableEulerFallbacks: true` to skip the third.
-2. **Signing** — `EulerSigner` (wraps `@eulerstream/euler-api-sdk`) obtains a signed WebSocket URL. Override by passing `signedWebSocketProvider` in options.
-3. **WebSocket** — `TikTokWsClient` (`src/lib/ws/lib/ws-client.ts`) sends `im_enter_room` on connect, maintains heartbeat, and decodes protobuf frames.
-4. **Decoding pipeline** — `deserializeWebSocketMessage` (in `utilities.ts`): `WebcastPushFrame` → gunzip → `ProtoMessageFetchResult` → decode each nested message via schema in `tiktok-schema.ts`.
-5. **Event emission** — `processDecodedData` maps proto type names to `WebcastEvent`/`ControlEvent` values using `WebcastEventMap` (`src/types/events.ts`) and emits on the connection instance.
+Stores events in an append‑only event table, along with session/stream metadata, user info, rules, actions and aggregate summaries. Sessions must be replayable, allowing recorded streams to be fed back through the pipeline.
 
-### Key modules
+Exposes normalized events and analytics to three downstream consumers:
 
-| Path | Role |
-|---|---|
-| `src/lib/client.ts` | `TikTokLiveConnection` — connect/disconnect/fetchRoomId/sendMessage |
-| `src/lib/web/index.ts` | `TikTokWebClient` — assembles all route instances on top of `WebcastHttpClient` |
-| `src/lib/web/lib/http-client.ts` | `WebcastHttpClient` — axios wrapper with signing, cookie jar, JSON/protobuf/HTML fetchers |
-| `src/lib/web/lib/tiktok-signer.ts` | `EulerSigner` — strips forbidden params, calls `signWebcastUrl` |
-| `src/lib/web/lib/cookie-jar.ts` | Manages `sessionid` + `tt-target-idc` cookies |
-| `src/lib/web/routes/` | HTTP route classes; filenames use `kebab-case` |
-| `src/lib/ws/lib/ws-client.ts` | WebSocket with heartbeat, ACK, room-switch, frame deserialization |
-| `src/lib/utilities.ts` | Protobuf serialization helpers, `validateAndNormalizeUniqueId` |
-| `src/lib/config.ts` | `Config` (HTTP/WS defaults), `SignConfig` (module-level Euler API config), device/location/screen presets |
-| `src/types/tiktok-schema.ts` | **Generated** — do not edit directly |
-| `src/types/events.ts` | `ControlEvent`, `WebcastEvent` enums; `WebcastEventMap`; typed `ClientEventMap` |
-| `src/lib/_legacy/` | `WebcastPushConnection` — deprecated shim; do not remove without a major version bump |
+A Web UI for the streamer and moderators (live feed, filters, search, rule editor, analytics and replay controls).
 
-### Signing & Euler Stream
+A middle‑layer forwarder that re‑emits normalized events to the Streamer API (e.g. Euler Stream API) with retry/back‑off and a dead‑letter queue.
 
-`SignConfig` in `src/lib/config.ts` is a module-level singleton that consumers mutate to set an API key or custom base path. `EulerSigner` merges `SignConfig` with any per-instance config. Environment variables `SIGN_API_KEY` and `SIGN_API_URL` set these at startup.
+A central storage system for long‑term analytics and activity history.
 
-## Key Conventions
+All planning, architecture, contracts and tests must be completed and approved before any implementation begins.
 
-### Route pattern
-All HTTP routes are callable class instances using `callable-instance`. Each extends `Route<Args, Response>` from `src/types/route.ts` and implements `call(args)`. They are instantiated in `TikTokWebClient`'s constructor and attached as public properties.
+1. Operating Model – Agent Roles & Responsibilities
+Claude — Program Lead & Systems Architect (air‑traffic controller)
 
-### Adding a new event
-1. Add a proto message type to `.proto/src/*.proto` and regenerate `tiktok-schema.ts`.
-2. Add a `WebcastEvent` enum value in `src/types/events.ts`.
-3. Add the proto-type-name → event mapping to `WebcastEventMap`.
-4. Add the typed handler signature to `ClientEventMap`.
-5. Handle any special dispatch logic in `processDecodedData` in `client.ts` (only needed if the event requires branching on message fields, like `FOLLOW`/`SHARE`).
+Owns the master plan, milestones, acceptance criteria and architectural decisions.
 
-### Import alias
-Use `@/*` (maps to `./src/*`) for all internal imports — never use relative paths crossing module boundaries.
+Defines the event contract (UnifiedEvent v1), storage model, schema/trigger ID mapping and service boundaries.
 
-### Code style
-- 4 spaces for `.ts`, 2 spaces for `.json` (`.editorconfig`)
-- Prettier: single quotes, `printWidth: 180` (`.prettierrc.json`)
-- `PascalCase` classes/types, `camelCase` variables/functions, `kebab-case` route filenames
+Designs the deployment topology (local Docker Compose first, then Cloudflare/Vercel later).
 
-### Commits
-Use Conventional Commit prefixes: `feat:`, `fix:`, `bump:`. Update `README.md` in the same PR when public behavior or options change.
+Maintains the risk register and resolves disagreements after hearing evidence from the other agents.
 
-## Environment Variables
+Approves all contracts and architecture before implementation begins.
 
-| Variable | Effect |
-|---|---|
-| `SIGN_API_KEY` | Euler API key (same as `SignConfig.apiKey`) |
-| `SIGN_API_URL` | Euler base URL override (default: `https://tiktok.eulerstream.com`) |
-| `TIKTOK_CLIENT_TIMEOUT` | axios timeout in ms (default: `10000`) |
-| `RANDOMIZE_TIKTOK_DEVICE` | `"true"` picks a random user-agent preset |
-| `RANDOMIZE_TIKTOK_LOCATION` | `"true"` picks a random locale preset |
-| `RANDOMIZE_TIKTOK_SCREEN` | `"true"` picks a random screen resolution preset |
-| `DEBUG_DESERIALIZE_XD` | Logs base64 payloads for unknown proto message types |
+Codex — Backend & Pipeline Implementation Lead
+
+Implements the ingestion service that connects to TikTok LIVE (direct connector or Euler WebSocket API) and emits raw events.
+
+Implements the normalization pipeline and event router that convert heterogeneous TikTok payloads into the UnifiedEvent types and route them to internal consumers.
+
+Implements the rule engine, storage integration and streamer forwarder with retry, back‑off and dead‑letter handling.
+
+Wires up the Docker stack, dev scripts and integration glue.
+
+Implements only schemas/contracts approved by Claude and ships with test harnesses and fixtures.
+
+Copilot — QA, CI/CD & Developer Experience Lead
+
+Defines the test strategy (unit, integration and end‑to‑end), builds a simulated event generator and recorded fixtures for replay.
+
+Enforces type safety, code quality bars and CI workflows; ensures reproducible Docker builds.
+
+Creates Postman collections, integration tests and failure‑injection tests (e.g., Streamer API down).
+
+Has veto power: can block merges if tests, typing or CI gates fail.
+
+Gemini — UX, Product & Security Lead
+
+Designs the information architecture for the Web UI and moderator workflow; defines UI screens, flows and rule builder UX.
+
+Conducts threat modeling, defines data retention/privacy policies, abuse prevention and rate‑limit strategies.
+
+Ensures the UI remains usable under high event volume and that tokens/secrets (e.g., sessionId, JWTs) are handled securely.
+
+Has veto power: can block UX or security decisions if the user experience or risk posture is unacceptable.
+
+2. Pairings & Checks (Cross‑Review Matrix)
+
+Claude ↔ Gemini: architecture decisions must incorporate UX/security implications.
+
+Claude ↔ Copilot: every milestone needs measurable acceptance criteria and testability.
+
+Codex ↔ Copilot: Codex builds features, Copilot writes harnesses/tests and tries to break them.
+
+Codex ↔ Gemini: UI needs drive API shape; Gemini validates usability.
+
+No lone‑wolf work: if one agent authors a spec or deliverable, at least one other agent must review it.
+
+3. Tooling & Execution Rules
+Approved Tools
+
+Docker / Docker Compose: for local‑first development; everything must run locally before any cloud deploy.
+
+Postman: for API contracts, mock servers and regression runs.
+
+tmux skill: for orchestrating multi‑process dev (API, worker, DB, UI, replay, tests).
+
+Euler Stream API: for a production‑ready WebSocket alternative; prefer this over direct TikTok reverse‑engineering for stability.
+
+MCP / GitHub tools: for repository operations, code search, documentation generation and project tracking.
+
+Cloudflare / Vercel: deploy targets only after local stack and tests are stable.
+
+Non‑Negotiables
+
+Local‑first: everything runs via Docker Compose prior to cloud deployment.
+
+Schema‑first: define the event contracts and storage model before writing core code.
+
+Replayability: recorded stream sessions must be replayable through the pipeline.
+
+Observability: basic logging and metrics must be in place by the end of Phase 2.
+
+4. System Blueprint (Target Architecture)
+
+Ingest Service (Node/TypeScript) – connects to TikTok LIVE via TikTokLiveConnection or the Euler WS API, emits raw events and reconnect/lifecycle events.
+
+Normalizer & Router – transforms heterogenous TikTok events into the canonical UnifiedEvent v1 schema, mapping numeric trigger IDs to event types and adding derived fields (e.g., placeholder tokens, dedupe keys). Maintains a trigger‑ID mapping file.
+
+Internal Event Bus – a fan‑out mechanism (e.g., Redis Streams, NATS, Postgres LISTEN/NOTIFY) that feeds events to the Web UI, storage, rule engine and streamer forwarder.
+
+Rule Engine – supports matching by eventType, conditional checks (e.g., gift.coins ≥ X), template rendering with placeholders ({username}, {displayName}, {giftName}, {giftCount}, {coins}, {message}, {eventType}, {timestamp}, {streamId}), and executes actions (announcements, moderation commands, etc.).
+
+Storage Layer – append‑only events table plus streams, sessions, users, rules, actions_log and optional aggregates; must support replay injection of stored sessions.
+
+Streamer Forwarder – converts UnifiedEvent into the Streamer API contract, implements retry/back‑off and dead‑letter queue, and records audit logs and metrics.
+
+Web UI – consists of Streamer and Moderator views:
+
+Streamer view: live event feed with filters/search, rule editor, analytics dashboard and replay controls.
+
+Moderator view: filtered event feed, user quick‑actions, per‑user notes and rule trigger testing. UI must handle high event volume gracefully.
+
+5. Phases & Gates (Execution Plan)
+Phase 1 — Discovery & Planning (No Code)
+
+Deliverables: docs/architecture.md, docs/contracts/unified-event.v1.schema.json, src/types/unified-event.ts, docs/storage.md, docs/threat-model.md, docs/ui-flows.md, docs/test-plan.md, postman/ttlc.postman_collection.json, docs/fixtures.md, docs/decision-log.md.
+
+Gates: all agents sign off that: (a) UnifiedEvent v1 covers at least CHAT, GIFT, MEMBER, LIKE, SOCIAL, SUBSCRIBE, EMOTE and control events CONNECTED, DISCONNECTED, ERROR; (b) the placeholder strategy (curly‑brace tokens) is explicit and matches the provided list; (c) the trigger‑type mapping (numeric IDs ↔ event types) is explicit; (d) replayability is designed; (e) risks and privacy concerns are documented.
+
+Phase 2 — Skeleton Stack (Vertical Slice)
+
+Codex builds: ingest → normalize → store (single DB) → broadcast to UI (WebSocket/SSE) and implements a replay command.
+
+Copilot builds: local Docker Compose config, integration tests using recorded fixtures, Postman collection, test harnesses.
+
+Gemini validates: UI readability under high event volume and plausibility of moderator workflow.
+
+Gate: “demo scenario”: connect to a live stream or replay a fixture, see events in the UI, store them and export the session.
+
+Phase 3 — Rule Engine & Streamer Forwarder
+
+Codex builds: rule actions, template rendering, streamer forwarder with retries and dead‑letter queue, and an action audit log.
+
+Copilot builds: rule‑engine test matrix, failure injection tests (e.g., downstream API down or slow).
+
+Gemini builds: rules‑editor UX with safe defaults and performs a security review for rule actions.
+
+Gate: moderator can create a rule using placeholders (e.g., announce gift with {username} and {giftName}), trigger it and see the resulting audit log.
+
+Phase 4 — Hardening & Deployment
+
+Add rate‑limiting, abuse detection, metrics dashboards, CI gates, Cloudflare/Vercel deployment configuration, documentation and runbooks.
+
+Gate: clean CI runs, reproducible deployments and documented limitations (especially TikTok reverse‑engineering caveats).
+
+6. Handoff & Review Protocol
+
+Each deliverable must include a header with:
+
+Title
+
+Owner Agent
+
+Depends on (other deliverables)
+
+Decision log (decisions made, alternatives rejected and why)
+
+Open questions (unresolved issues)
+
+Validation checklist (how reviewers should verify correctness)
+
+Review workflow: a deliverable is not “done” until a different agent reviews it and records a verdict:
+
+✅ Approved
+
+⚠️ Approved with changes (list required changes)
+
+❌ Rejected (explain why and provide fix steps)
+
+All reviews and statuses must be logged.
+
+GitHub Project Tracker Integration
+
+Every deliverable, decision or task must be tracked as an issue or card in the repository’s GitHub Project board.
+
+Agents should create a new issue or project card with the deliverable’s header, link to the corresponding document in the repo and assign it to the owner agent.
+
+Use GitHub labels (e.g., phase1, architecture, schema, security, etc.) to categorize tasks.
+
+Update the card’s status columns (e.g., To Do, In Progress, Needs Review, Done) to reflect progress. Use automation rules where available.
+
+Include review outcomes (Approved, Approved with changes, Rejected) in the issue comments and adjust the card status accordingly.
+
+The GitHub Project board becomes the single source of truth for the project timeline; agents should refer to it during stand‑ups and planning.
+
+7. Immediate Next Steps (Day 0 Outputs)
+
+Claude: draft architecture.md, unified-event.v1.schema.json and storage.md; create corresponding GitHub issues/cards with deliverable headers.
+
+Gemini: draft ui-flows.md and threat-model.md; create GitHub issues/cards.
+
+Copilot: draft test-plan.md, fixtures.md and a Postman collection; create GitHub issues/cards.
+
+All agents: contribute to decision-log.md and propose the initial risk register.
+
+Create the GitHub Project board (if it doesn’t already exist) in the repository designated for the TikTok LIVE Connector. Add columns for each phase and begin tracking the above tasks immediately.
+
+8. Notes on TikTok Connectivity & Security
+
+Reverse‑engineered connectors are brittle: plan for breakage, captchas and rate‑limits. Provide fallback routes, prefer the Euler WS API for production and document caveats.
+
+Treat sessionId and any signing/JWT secrets as radioactive — never commit them to the repository. Use environment variables and secret management in CI.
+
+Document and enforce data retention policies. Delete stored sessions after a defined period unless analytics requires longer retention.
+
+<--------- End of Multi-Agent Orchestration Prompt --------->
