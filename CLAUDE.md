@@ -128,6 +128,16 @@ Moderator view: filtered event feed, user quick‑actions, per‑user notes and 
 
 5. Phases & Gates (Execution Plan)
 Phase 1 — Discovery & Planning (No Code)
+[docs/architecture.md](https://github.com/rainbowkillah/crispy-enigma/issues/241)
+[docs/contracts/unified-event.v1.schema.json](https://github.com/rainbowkillah/crispy-enigma/issues/242)
+[docs/storage.md](https://github.com/rainbowkillah/crispy-enigma/issues/243)
+[docs/threat-model.md](https://github.com/rainbowkillah/crispy-enigma/issues/244)
+[docs/ui-flows.md](https://github.com/rainbowkillah/crispy-enigma/issues/245)
+[docs/test-plan.md](https://github.com/rainbowkillah/crispy-enigma/issues/246)
+[postman/ttlc.postman_collection.json](https://github.com/rainbowkillah/crispy-enigma/issues/247)
+[docs/fixtures.md](https://github.com/rainbowkillah/crispy-enigma/issues/248)
+[src/types/unified-event.ts](https://github.com/rainbowkillah/crispy-enigma/issues/249)
+[docs/decision-log.md](https://github.com/rainbowkillah/crispy-enigma/issues/250)
 
 Deliverables: docs/architecture.md, docs/contracts/unified-event.v1.schema.json, src/types/unified-event.ts, docs/storage.md, docs/threat-model.md, docs/ui-flows.md, docs/test-plan.md, postman/ttlc.postman_collection.json, docs/fixtures.md, docs/decision-log.md.
 
